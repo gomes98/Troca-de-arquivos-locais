@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FileShare</title>
+  <script src="./js/socket.io.min.js"></script>
+  <script src="./js/vue.js"></script>
+  <link rel="stylesheet" href="./css/pico.min.css">
+
+</head>
+
+<body >
+  <div id="app">
+    <main class="container-fluid">
+      <article>
+        Meu Id: {{mysocket}}
+      </article>
+      <article>
+        <header>Chat</header>
+        <article class="chat">
+          <div>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Usuários Online</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row" @click="selectedUser = 'All'" :class="selectedUser == 'All' ? 'selected': 'line'">
+                    Enviar para todos</th>
+                </tr>
+                <tr v-for="u in users" :key="u.id" @click="selectedUser = u.id">
+                  <th scope="row" :class="selectedUser == u.id ? 'selected': 'line'">
+                    <span>{{u.id}}</span>
+                    <small>{{u.address}}</small>
+                  </th>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <textarea name="bio" placeholder="Conversas" style="height: 50vh;" v-model="mensagens" readonly></textarea>
+          </div>
+        </article>
+        <input type="text" name="text" placeholder="digite a mensagem e enter" v-model="mensagem"
+          @keydown.enter="send" />
+        <input type="file" @change="sendFile" />
+        <small>*Tamanho maximo 200mb</small>
+      </article>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Nome </th>
+            <th scope="col">Tamanho </th>
+            <th scope="col">Tipo </th>
+            <th scope="col">Recebido </th>
+            <th scope="col">Baixar </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="f in files" :key="f.name" class="tableLine">
+            <td scope="row">{{f.filename}}</td>
+            <td scope="row">{{f.size}}</td>
+            <td scope="row">{{f.mimetype}}</td>
+            <td scope="row">{{f.from}}</td>
+            <td scope="row"><button class="button" @click="download(f)">Baixar</button> <button class="button"
+                @click="deleteFile(f)">Excluir</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </div>
+</body>
+
+<script>
+  var app = new Vue({
+    el: '#app',
+    data: {
+      message: 'Hello Vue!',
+      mysocket: null,
+      socket: null,
+      messages: [],
+      users: [],
+      selectedUser: "All",
+      mensagem: "",
+      mensagens: "",
+      files: []
+    },
+    methods: {
+      send() {
+        this.socket.emit('message', {
+          to: this.selectedUser,
+          message: this.mensagem
+        })
+        this.mensagem = ""
+      },
+      sendFile(event) {
+        const file = event.target.files[0]
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          this.socket.emit('file', {
+            to: this.selectedUser,
+            filename: file.name,
+            mimetype: file.type,
+            size: file.size,
+            message: e.target.result
+          })
+        }
+        reader.readAsArrayBuffer(file)
+      },
+      download(file) {
+        var a = document.createElement("a");
+        var blob = new Blob([file.message], { type: file.mimetype });
+        a.href = window.URL.createObjectURL(blob);
+        a.download = file.filename;
+        a.click();
+      },
+      deleteFile(file) {
+        let idx = this.files.findIndex(f => f.name == file.name)
+        this.files.splice(idx, 1)
+      },
+    },
+    created() {
+      this.socket = io()
+      this.socket.on('connect', () => {
+        this.mysocket = this.socket.id
+      })
+      this.socket.on('disconnect', () => {
+        this.mysocket = null
+      })
+      this.socket.on('users', (users) => {
+        this.users = []
+        if (users.includes(this.selectedUser) == false) {
+          this.selectedUser = "All"
+        }
+        users.forEach(u => {
+          if (u.id != this.mysocket) {
+            this.users.push(u);
+          }
+        })
+      })
+      this.socket.on('message', (message) => {
+        console.log(message)
+        this.messages.push(message)
+        this.mensagens = this.messages.map(m => `${m.from == this.mysocket ? 'EU' : m.from} -> ${m.to}: ${m.message}`).join("\n")
+      })
+      this.socket.on('file', (message) => {
+        this.files.push(message)
+      })
+    }
+  })
+</script>
+<style>
+  .chat {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    grid-template-rows: 1fr;
+    grid-column-gap: 20px;
+    grid-row-gap: 20px;
+    justify-items: stretch;
+    align-items: stretch;
+  }
+
+  .line {
+    cursor: pointer;
+  }
+
+  .line:hover {
+    background-color: #ffffff78;
+    color: red;
+  }
+
+  .selected {
+    background-color: #ffffff78;
+    color: rgb(0, 255, 8);
+  }
+
+  .button {
+    margin-left: 10px;
+  }
+</style>
+
+</html>
