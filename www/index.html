@@ -11,7 +11,7 @@
 
 </head>
 
-<body >
+<body>
   <div id="app">
     <main class="container-fluid">
       <article>
@@ -42,7 +42,8 @@
             </table>
           </div>
           <div>
-            <textarea name="bio" placeholder="Conversas" style="height: 50vh;" v-model="mensagens" readonly></textarea>
+            <textarea name="bio" placeholder="Conversas" id="conversas" style="height: 50vh;" v-model="mensagens"
+              readonly></textarea>
           </div>
         </article>
         <input type="text" name="text" placeholder="digite a mensagem e enter" v-model="mensagem"
@@ -63,7 +64,7 @@
         <tbody>
           <tr v-for="f in files" :key="f.name" class="tableLine">
             <td scope="row">{{f.filename}}</td>
-            <td scope="row">{{f.size}}</td>
+            <td scope="row">{{ humanReadableSize(f.size) }}</td>
             <td scope="row">{{f.mimetype}}</td>
             <td scope="row">{{f.from}}</td>
             <td scope="row"><button class="button" @click="download(f)">Baixar</button> <button class="button"
@@ -79,27 +80,30 @@
   var app = new Vue({
     el: '#app',
     data: {
-      message: 'Hello Vue!',
-      mysocket: null,
+      mysocket: "Desconectado",
       socket: null,
       messages: [],
       users: [],
       selectedUser: "All",
       mensagem: "",
       mensagens: "",
-      files: []
+      files: [],
+      sound: new Audio('./media/text.mp3'),
+      newMessages: 0,
+      notification: null,
     },
     methods: {
       send() {
+        if (this.mensagem == "") return;
         this.socket.emit('message', {
           to: this.selectedUser,
           message: this.mensagem
         })
-        this.mensagem = ""
+        this.mensagem = "";
       },
       sendFile(event) {
-        const file = event.target.files[0]
-        const reader = new FileReader()
+        const file = event.target.files[0];
+        const reader = new FileReader();
         reader.onload = (e) => {
           this.socket.emit('file', {
             to: this.selectedUser,
@@ -109,7 +113,7 @@
             message: e.target.result
           })
         }
-        reader.readAsArrayBuffer(file)
+        reader.readAsArrayBuffer(file);
       },
       download(file) {
         var a = document.createElement("a");
@@ -119,37 +123,102 @@
         a.click();
       },
       deleteFile(file) {
-        let idx = this.files.findIndex(f => f.name == file.name)
-        this.files.splice(idx, 1)
+        let idx = this.files.findIndex(f => f.name == file.name);
+        this.files.splice(idx, 1);
+      },
+      humanReadableSize(bytes) {
+        if (bytes < 1024) return (bytes).toFixed(2) + " B";
+        else if (bytes < (1024 * 1024)) return (bytes / 1024.0).toFixed(2) + " KB";
+        else if (bytes < (1024 * 1024 * 1024)) return (bytes / 1024.0 / 1024.0).toFixed(2) + " MB";
+        else return (bytes / 1024.0 / 1024.0 / 1024.0).toFixed(2) + " GB";
+      },
+      scroll() {
+        let textarea = document.getElementById("conversas");
+        textarea.scrollTop = textarea.scrollHeight;
+      },
+      notify() {
+        if(!document.hidden) return;
+        if (this.newMessages > 0) {
+          document.title = `(${this.newMessages}) FileShare`;
+        } else {
+          document.title = `FileShare`;
+        }
+        if(this.notification) this.notification.close();
+        if (Notification.permission == "granted") {
+          let lastMessage = this.messages[this.messages.length - 1];
+          // If it's okay let's create a notification
+          this.notification = new Notification(`${this.newMessages} Nova${this.newMessages == 1? '' : 's'} mensage${this.newMessages == 1? 'm' : 'ns'}`, {
+            body: `${lastMessage.from}: ${lastMessage.message}`,
+          });
+        }
+
+        if (this.notification) {
+          this.notification.onclick = () => {
+            window.focus();
+            this.notification.close();
+            this.newMessages = 0;
+            document.title = `FileShare`
+          };
+        }
       },
     },
     created() {
-      this.socket = io()
+      this.socket = io();
+      // Recebe id do socket
       this.socket.on('connect', () => {
-        this.mysocket = this.socket.id
-      })
+        this.mysocket = this.socket.id;
+      });
+      // Desconecta socket
       this.socket.on('disconnect', () => {
-        this.mysocket = null
-      })
+        this.mysocket = "Desconectado";
+      });
+      // Recebe usuários online
       this.socket.on('users', (users) => {
-        this.users = []
+        this.users = [];
         if (users.includes(this.selectedUser) == false) {
-          this.selectedUser = "All"
+          this.selectedUser = "All";
         }
         users.forEach(u => {
           if (u.id != this.mysocket) {
             this.users.push(u);
           }
         })
-      })
+      });
+      // Recebe mensagens
       this.socket.on('message', (message) => {
-        console.log(message)
-        this.messages.push(message)
-        this.mensagens = this.messages.map(m => `${m.from == this.mysocket ? 'EU' : m.from} -> ${m.to}: ${m.message}`).join("\n")
-      })
+        this.messages.push(message);
+        if (this.messages.length > 100) this.messages.shift();
+        this.mensagens = this.messages.map(m => `${m.from == this.mysocket ? 'EU' : m.from} -> ${m.to}: ${m.message}`).join("\n");
+        this.sound.play();
+        this.scroll();
+        this.newMessages++;
+        this.notify();
+      });
+      // recebe todas as mensagens
+      this.socket.on('messages', (messages) => {
+        this.messages = messages;
+        this.mensagens = this.messages.map(m => `${m.from} -> ${m.to}: ${m.message}`).join("\n");
+      });
+      // Recebe arquivos
       this.socket.on('file', (message) => {
-        this.files.push(message)
-      })
+        this.files.push(message);
+      });
+      // Verifica se o browser suporta notificações desktop
+      if (!("Notification" in navigator)) {
+        console.log('Esse browser não suporta notificações desktop');
+      } else {
+        if (Notification.permission !== 'denied') {
+          // Pede ao usuário para utilizar a Notificação Desktop
+          Notification.requestPermission();
+        }
+      }
+      document.addEventListener('visibilitychange', () => {
+        if(document.hidden == false){
+          this.newMessages = 0;
+          document.title = `FileShare`
+          if(this.notification) this.notification.close();
+        }
+      });
     }
   })
 </script>

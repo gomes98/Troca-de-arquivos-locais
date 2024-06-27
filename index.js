@@ -25,10 +25,14 @@ app.use(history({
 httpServer.listen(process.env.HTTP_PORT, () => {
   console.log('Server running on port ' + process.env.HTTP_PORT);
 });
+let messages = [];
 // adicionando websocket
 io.on('connection', (socket) => {
   io.fetchSockets().then((sockets) => {
     io.emit('users', sockets.map((socket) => { return { id: socket.id, address: socket.handshake.address }; }));
+    setTimeout(() => {
+      io.to(socket.id).emit('messages', messages);
+    }, 1000);
   });
 
   socket.on('disconnect', () => {
@@ -36,17 +40,22 @@ io.on('connection', (socket) => {
       io.emit('users', sockets.map((socket) => { return { id: socket.id, address: socket.handshake.address }; }));
     });
   });
-
+  // message
   socket.on('message', (msg) => {
     msg.from = socket.id;
     console.log('message: ', msg);
     if (msg.to === 'All') {
       io.emit('message', msg);
+      messages.push(msg);
+      if (messages.length > 100) {
+        messages.shift();
+      }
     } else {
       io.to(msg.to).emit('message', msg);
       io.to(msg.from).emit('message', msg);
     }
   });
+  // file
   socket.on('file', (msg) => {
     msg.from = socket.id;
     console.log('file: ', msg);
@@ -54,6 +63,7 @@ io.on('connection', (socket) => {
       io.emit('file', msg);
     } else {
       io.to(msg.to).emit('file', msg);
+      io.to(msg.from).emit('file', msg);
     }
   });
 });
