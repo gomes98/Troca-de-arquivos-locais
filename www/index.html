@@ -189,10 +189,12 @@
         this.messages.push(message);
         if (this.messages.length > 100) this.messages.shift();
         this.mensagens = this.messages.map(m => `${m.from == this.mysocket ? 'EU' : m.from} -> ${m.to}: ${m.message}`).join("\n");
-        this.sound.play();
+        if(this.mysocket != message.from){
+          this.sound.play();
+          this.newMessages++;
+          this.notify();
+        }
         this.scroll();
-        this.newMessages++;
-        this.notify();
       });
       // recebe todas as mensagens
       this.socket.on('messages', (messages) => {
